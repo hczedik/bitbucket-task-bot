@@ -85,9 +85,11 @@ fn handle_pr_opened_event(
         .send_json(&Comment {
             text: "Test comment".to_string(),
         })
-        .map_err(|e| -> Error { e.into() })
+        .from_err()
         .and_then(|response| {
             info!("Comment response: {:?}", response);
+
+            // TODO response.json();
 
             Ok("Handled pr:opened event")
         });
