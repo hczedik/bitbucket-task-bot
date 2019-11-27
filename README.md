@@ -9,7 +9,7 @@ To run (in development mode):
 
     cargo run
 
-Tu run (in development mode, with automatic reloading on code changes):
+To run (in development mode, with automatic reloading on code changes):
 
     cargo watch -x run
 
