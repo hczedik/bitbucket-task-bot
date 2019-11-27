@@ -1,5 +1,11 @@
 use serde::{Serialize,Deserialize};
 
+#[derive(Deserialize)]
+pub struct QueryParams {
+   pub bearer: String
+}
+
+// BITBUCKET TYPES:
 // note: this is obviously only a subset of all the fields that Bitbucket sends.
 // I only implemented those which I need.
 
