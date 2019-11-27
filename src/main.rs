@@ -52,15 +52,15 @@ fn handle_bitbucket_event(
 
     if json["test"].as_bool() == Some(true) {
         // Bitbucket connection test
-        return Box::new(future::ok("Success"));
+        Box::new(future::ok("Success"))
     } else if json["eventKey"].as_str() == Some("pr:opened") {
         let event: PullRequestOpenedEvent = match serde_json::from_value(json) {
             Err(e) => return Box::new(future::err(e.into())),
             Ok(event) => event,
         };
-        return handle_pr_opened_event(event, &query.bearer);
+        handle_pr_opened_event(event, &query.bearer)
     } else {
-        return Box::new(future::ok("Ignoring unexpected payload"));
+        Box::new(future::ok("Ignoring unexpected payload"))
     }
 }
 
@@ -92,7 +92,7 @@ fn handle_pr_opened_event(
             Ok("Handled pr:opened event")
         });
 
-    return Box::new(response);
+    Box::new(response)
 }
 
 fn get_base_url(url: &str) -> &str {
