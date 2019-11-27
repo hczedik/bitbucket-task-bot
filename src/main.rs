@@ -39,7 +39,10 @@ fn index() -> impl Responder {
     "Hi, I'm the Bitbucket Task Bot!"
 }
 
-fn handle_bitbucket_event(query: web::Query<QueryParams>, payload: String) -> Box<dyn Future<Item = &'static str, Error = Error>> {
+fn handle_bitbucket_event(
+    query: web::Query<QueryParams>,
+    payload: String,
+) -> Box<dyn Future<Item = &'static str, Error = Error>> {
     info!("Received event: {}", payload);
 
     let json: Value = match serde_json::from_str(&payload) {
@@ -63,7 +66,7 @@ fn handle_bitbucket_event(query: web::Query<QueryParams>, payload: String) -> Bo
 
 fn handle_pr_opened_event(
     event: PullRequestOpenedEvent,
-    bearer: &str
+    bearer: &str,
 ) -> Box<dyn Future<Item = &'static str, Error = Error>> {
     let pr = event.pull_request;
     let base_url = get_base_url(&pr.links.self_link[0].href);
@@ -76,9 +79,7 @@ fn handle_pr_opened_event(
     );
     let pr_comment_url = format!("{}pull-requests/{}/comments", repo_base_url, pr.id);
 
-    let client = Client::build()
-        .bearer_auth(bearer)
-        .finish();
+    let client = Client::build().bearer_auth(bearer).finish();
     let response = client
         .post(&pr_comment_url)
         .send_json(&Comment {

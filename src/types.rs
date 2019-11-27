@@ -1,8 +1,8 @@
-use serde::{Serialize,Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize)]
 pub struct QueryParams {
-   pub bearer: String
+    pub bearer: String,
 }
 
 // BITBUCKET TYPES:
@@ -12,7 +12,7 @@ pub struct QueryParams {
 #[derive(Deserialize)]
 pub struct PullRequestOpenedEvent {
     #[serde(rename = "pullRequest")]
-    pub pull_request: PullRequest
+    pub pull_request: PullRequest,
 }
 
 #[derive(Deserialize)]
@@ -22,38 +22,38 @@ pub struct PullRequest {
     pub to_ref: Ref,
     #[serde(rename = "fromRef")]
     pub from_ref: Ref,
-    pub links: Links
+    pub links: Links,
 }
 
 #[derive(Deserialize)]
 pub struct Links {
     #[serde(rename = "self")]
-    pub self_link: Vec<Link>
+    pub self_link: Vec<Link>,
 }
 
 #[derive(Deserialize)]
 pub struct Link {
-    pub href: String
+    pub href: String,
 }
 
 #[derive(Deserialize)]
 pub struct Ref {
     pub id: String,
-    pub repository: Repository
+    pub repository: Repository,
 }
 
 #[derive(Deserialize)]
 pub struct Repository {
     pub slug: String,
-    pub project: Project
+    pub project: Project,
 }
 
 #[derive(Deserialize)]
 pub struct Project {
-    pub key: String
+    pub key: String,
 }
 
 #[derive(Serialize)]
 pub struct Comment {
-    pub text: String
+    pub text: String,
 }
