@@ -70,28 +70,48 @@ fn handle_pr_opened_event(
     bearer: &str,
 ) -> Box<dyn Future<Item = &'static str, Error = Error>> {
     let pr = event.pull_request;
-    let base_url = get_base_url(&pr.links.self_link[0].href);
+    let base_url = get_base_url(&pr.links.self_link[0].href).to_string();
     let project_key = pr.to_ref.repository.project.key;
     let repository_slug = pr.to_ref.repository.slug;
 
+    let rest_api_base_url = format!("{}rest/api/1.0/", base_url);
+
     let repo_base_url = format!(
-        "{}rest/api/1.0/projects/{}/repos/{}/",
-        base_url, project_key, repository_slug
+        "{}projects/{}/repos/{}/",
+        rest_api_base_url, project_key, repository_slug
     );
     let pr_comment_url = format!("{}pull-requests/{}/comments", repo_base_url, pr.id);
 
     let client = Client::build().bearer_auth(bearer).finish();
-    let response = comment_pull_request(client, &pr_comment_url).and_then(|comment| {
+    let response = comment_pull_request(&client, &pr_comment_url).and_then(move |comment| {
         info!("Commented with id: {}", comment.id);
 
-        Ok("Handled pr:opened event")
+        let task_url = format!("{}tasks", rest_api_base_url);
+
+        info!("{}", task_url);
+
+        client
+            .post(&task_url)
+            .send_json(&Task {
+                anchor: Anchor {
+                    id: comment.id,
+                    anchor_type: "COMMENT".to_string(),
+                },
+                text: "Test task".to_string(),
+            })
+            .from_err()
+            .and_then(|response| {
+                info!("Task creation response: {:?}", response);
+
+                Ok("Handled pr:opened event")
+            })
     });
 
     Box::new(response)
 }
 
 fn comment_pull_request(
-    client: Client,
+    client: &Client,
     pr_comment_url: &str,
 ) -> Box<dyn Future<Item = PullRequestCommentResponse, Error = Error>> {
     let future = client

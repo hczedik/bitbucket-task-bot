@@ -62,3 +62,16 @@ pub struct Comment {
 pub struct PullRequestCommentResponse {
     pub id: i64,
 }
+
+#[derive(Serialize)]
+pub struct Task {
+    pub anchor: Anchor,
+    pub text: String,
+}
+
+#[derive(Serialize)]
+pub struct Anchor {
+    pub id: i64,
+    #[serde(rename = "type")]
+    pub anchor_type: String,
+}
