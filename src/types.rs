@@ -57,3 +57,8 @@ pub struct Project {
 pub struct Comment {
     pub text: String,
 }
+
+#[derive(Deserialize)]
+pub struct PullRequestCommentResponse {
+    pub id: i64,
+}

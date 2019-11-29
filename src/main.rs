@@ -1,4 +1,5 @@
 use actix_web::client::Client;
+use actix_web::error::ErrorInternalServerError;
 use actix_web::middleware::Logger;
 use actix_web::{web, App, Error, HttpServer, Responder};
 use env_logger::Env;
@@ -80,21 +81,32 @@ fn handle_pr_opened_event(
     let pr_comment_url = format!("{}pull-requests/{}/comments", repo_base_url, pr.id);
 
     let client = Client::build().bearer_auth(bearer).finish();
-    let response = client
-        .post(&pr_comment_url)
+    let response = comment_pull_request(client, &pr_comment_url).and_then(|comment| {
+        info!("Commented with id: {}", comment.id);
+
+        Ok("Handled pr:opened event")
+    });
+
+    Box::new(response)
+}
+
+fn comment_pull_request(
+    client: Client,
+    pr_comment_url: &str,
+) -> Box<dyn Future<Item = PullRequestCommentResponse, Error = Error>> {
+    let future = client
+        .post(pr_comment_url)
         .send_json(&Comment {
             text: "Test comment".to_string(),
         })
         .from_err()
-        .and_then(|response| {
+        .and_then(|mut response| {
             info!("Comment response: {:?}", response);
-
-            // TODO response.json();
-
-            Ok("Handled pr:opened event")
+            response.json::<PullRequestCommentResponse>().map_err(|e| {
+                ErrorInternalServerError(format!("Error converting response to JSON: {}", e))
+            })
         });
-
-    Box::new(response)
+    Box::new(future)
 }
 
 fn get_base_url(url: &str) -> &str {
