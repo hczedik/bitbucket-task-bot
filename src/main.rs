@@ -84,7 +84,15 @@ fn handle_pr_opened_event(
     bearer: &str,
 ) -> Box<dyn Future<Item = &'static str, Error = Error>> {
     let pr = event.pull_request;
-    let base_url = get_base_url(&pr.links.self_link[0].href).to_string();
+    let base_url = match get_base_url(&pr.links.self_link[0].href) {
+        None => {
+            return Box::new(future::err(ErrorInternalServerError(format!(
+                "Error reading URL: {}",
+                &pr.links.self_link[0].href
+            ))))
+        }
+        Some(base_url) => base_url.to_string(),
+    };
     let repo = pr.to_ref.repository;
     let pull_request_id = pr.id;
 
@@ -149,11 +157,9 @@ fn add_tasks(
     })
 }
 
-fn get_base_url(url: &str) -> &str {
+fn get_base_url(url: &str) -> Option<&str> {
     URL_HOST_REGEX
         .captures(url)
-        .unwrap()
-        .get(1)
-        .unwrap()
-        .as_str()
+        .and_then(|c| c.get(1))
+        .map(|u| u.as_str())
 }
