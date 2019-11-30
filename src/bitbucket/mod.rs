@@ -33,7 +33,7 @@ impl BitbucketClient {
 
     pub fn comment_pull_request(
         &self,
-        repo: Repository,
+        repo: &Repository,
         pull_request_id: i64,
         comment_text: String,
     ) -> Box<dyn Future<Item = PullRequestCommentResponse, Error = Error>> {

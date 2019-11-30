@@ -95,28 +95,59 @@ fn handle_pr_opened_event(
     };
     let repo = pr.to_ref.repository;
     let pull_request_id = pr.id;
+    let from_branch = pr.from_ref.id.trim_start_matches("refs/heads/").to_string();
+    let to_branch = pr.to_ref.id.trim_start_matches("refs/heads/").to_string();
 
-    let bitbucket_client = Rc::new(BitbucketClient::new(bearer.to_string(), base_url));
+    let client = Rc::new(BitbucketClient::new(bearer.to_string(), base_url));
 
-    let future = load_config_file(&bitbucket_client, &repo)
-        .and_then(move |config| {
-            debug!("Config: {:?}", config);
+    let future = load_config_file(&client, &repo).and_then(move |config| {
+        debug!("Config: {:?}", config);
 
-            // TODO
-            let tasks = vec![
-                "Task1".to_string(),
-                "Task2".to_string(),
-                "Task3".to_string(),
-                "Task4".to_string(),
-            ];
+        match select_workflow(&config, &from_branch, &to_branch) {
+            None => {
+                info!("No workflow for merge {} -> {}", from_branch, to_branch);
+                Box::new(future::ok("No workflow"))
+            }
+            Some(workflow) => {
+                info!(
+                    "Triggering workflow for merge {} -> {}",
+                    from_branch, to_branch
+                );
+                handle_workflow(client, &repo, pull_request_id, workflow)
+            }
+        }
+    });
 
-            bitbucket_client
-                .comment_pull_request(repo, pull_request_id, "Test comment".to_string())
-                .and_then(move |comment| {
-                    let comment_id = comment.id;
-                    info!("Commented with id: {}", comment_id);
-                    add_tasks(bitbucket_client, comment_id, tasks)
-                })
+    Box::new(future)
+}
+
+fn select_workflow<'w>(
+    config: &'w WorkflowConfig,
+    from_branch: &str,
+    to_branch: &str,
+) -> Option<&'w Workflow> {
+    config.workflow.iter().find(|workflow| {
+        workflow
+            .merge
+            .iter()
+            // TODO need to support wildcard matching here
+            .any(|merge| merge.from == from_branch && merge.to == to_branch)
+    })
+}
+
+fn handle_workflow(
+    client: Rc<BitbucketClient>,
+    repo: &Repository,
+    pull_request_id: i64,
+    workflow: &Workflow,
+) -> Box<dyn Future<Item = &'static str, Error = Error>> {
+    let tasks = workflow.tasks.clone();
+    let future = client
+        .comment_pull_request(repo, pull_request_id, workflow.comment.to_string())
+        .and_then(move |comment| {
+            let comment_id = comment.id;
+            info!("Commented with id: {}", comment_id);
+            add_tasks(client, comment_id, tasks)
         })
         .and_then(|_| Ok("Success"));
 
