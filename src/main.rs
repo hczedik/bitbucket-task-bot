@@ -1,12 +1,13 @@
 use actix_web::client::Client;
 use actix_web::error::ErrorInternalServerError;
+use actix_web::http::StatusCode;
 use actix_web::middleware::Logger;
 use actix_web::{web, App, Error, HttpServer, Responder};
 use env_logger::Env;
 use futures::future;
 use futures::future::Future;
 use lazy_static::lazy_static;
-use log::info;
+use log::{error, info};
 use regex::Regex;
 use serde_json::Value;
 use std::env;
@@ -88,23 +89,9 @@ fn handle_pr_opened_event(
 
         let task_url = format!("{}tasks", rest_api_base_url);
 
-        info!("{}", task_url);
-
-        client
-            .post(&task_url)
-            .send_json(&Task {
-                anchor: Anchor {
-                    id: comment.id,
-                    anchor_type: "COMMENT".to_string(),
-                },
-                text: "Test task".to_string(),
-            })
-            .from_err()
-            .and_then(|response| {
-                info!("Task creation response: {:?}", response);
-
-                Ok("Handled pr:opened event")
-            })
+        add_task_to_comment(&client, &task_url, comment.id, "Test task".to_string()).and_then(
+            move |_| add_task_to_comment(&client, &task_url, comment.id, "Test task 2".to_string()),
+        )
     });
 
     Box::new(response)
@@ -120,11 +107,51 @@ fn comment_pull_request(
             text: "Test comment".to_string(),
         })
         .from_err()
+        .and_then(|response| {
+            if response.status() == StatusCode::CREATED {
+                Ok(response)
+            } else {
+                info!("Error creation response: {:?}", response);
+                Err(ErrorInternalServerError(format!(
+                    "Unexpected status code for comment creation: {}",
+                    response.status()
+                )))
+            }
+        })
         .and_then(|mut response| {
-            info!("Comment response: {:?}", response);
             response.json::<PullRequestCommentResponse>().map_err(|e| {
                 ErrorInternalServerError(format!("Error converting response to JSON: {}", e))
             })
+        });
+    Box::new(future)
+}
+
+fn add_task_to_comment(
+    client: &Client,
+    task_url: &str,
+    comment_id: i64,
+    task_text: String,
+) -> Box<dyn Future<Item = &'static str, Error = Error>> {
+    let future = client
+        .post(task_url)
+        .send_json(&Task {
+            anchor: Anchor {
+                id: comment_id,
+                anchor_type: "COMMENT".to_string(),
+            },
+            text: task_text,
+        })
+        .from_err()
+        .and_then(|response| {
+            if response.status() == StatusCode::CREATED {
+                Ok("Task created")
+            } else {
+                error!("Task creation response: {:?}", response);
+                Err(ErrorInternalServerError(format!(
+                    "Unexpected status code for task creation: {}",
+                    response.status()
+                )))
+            }
         });
     Box::new(future)
 }
