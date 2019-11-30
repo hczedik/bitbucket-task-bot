@@ -111,7 +111,7 @@ fn comment_pull_request(
             if response.status() == StatusCode::CREATED {
                 Ok(response)
             } else {
-                info!("Task creation response: {:?}", response);
+                error!("Task creation response: {:?}", response);
                 Err(ErrorInternalServerError(format!(
                     "Unexpected status code for comment creation: {}",
                     response.status()
