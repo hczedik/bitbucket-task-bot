@@ -5,6 +5,24 @@ pub struct QueryParams {
     pub bearer: String,
 }
 
+#[derive(Deserialize, Debug)]
+pub struct WorkflowConfig {
+    pub workflow: Vec<Workflow>,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct Workflow {
+    pub merge: Vec<Merge>,
+    pub comment: String,
+    pub tasks: Vec<String>,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct Merge {
+    pub from: String,
+    pub to: String,
+}
+
 // BITBUCKET TYPES:
 // note: this is obviously only a subset of all the fields that Bitbucket sends.
 // I only implemented those which I need.

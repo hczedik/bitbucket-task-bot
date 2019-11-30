@@ -3,15 +3,17 @@ use actix_web::error::ErrorInternalServerError;
 use actix_web::http::StatusCode;
 use actix_web::middleware::Logger;
 use actix_web::{web, App, Error, HttpServer, Responder};
+use bytes::Bytes;
 use env_logger::Env;
 use futures::future;
 use futures::future::Future;
 use lazy_static::lazy_static;
-use log::{error, info};
+use log::{debug, error, info};
 use regex::Regex;
 use serde_json::Value;
 use std::env;
 use std::rc::Rc;
+use toml;
 
 mod types;
 use types::*;
@@ -82,36 +84,76 @@ fn handle_pr_opened_event(
         "{}projects/{}/repos/{}/",
         rest_api_base_url, project_key, repository_slug
     );
+
     let pr_comment_url = format!("{}pull-requests/{}/comments", repo_base_url, pr.id);
 
-    let tasks = vec![
-        "Task1".to_string(),
-        "Task2".to_string(),
-        "Task3".to_string(),
-        "Task4".to_string(),
-    ];
-
     let client = Rc::new(Client::build().bearer_auth(bearer).finish());
-    let response = comment_pull_request(&client, &pr_comment_url).and_then(move |comment| {
-        let comment_id = comment.id;
-        info!("Commented with id: {}", comment_id);
 
-        let task_url = Rc::new(format!("{}tasks", rest_api_base_url));
+    let future = load_config_file(&client, &repo_base_url)
+        .and_then(move |config| {
+            debug!("Config: {:?}", config);
 
-        let init_future: Box<dyn Future<Item = &'static str, Error = Error>> =
-            Box::new(future::ok("init"));
+            // TODO
+            let tasks = vec![
+                "Task1".to_string(),
+                "Task2".to_string(),
+                "Task3".to_string(),
+                "Task4".to_string(),
+            ];
 
-        tasks.iter().fold(init_future, move |future, task| {
-            Box::new(future.and_then({
-                let client = Rc::clone(&client);
-                let task_url = Rc::clone(&task_url);
-                let task: String = task.clone();
-                move |_| add_task_to_comment(&client, &task_url, comment_id, task)
-            }))
+            comment_pull_request(&client, &pr_comment_url).and_then(move |comment| {
+                let comment_id = comment.id;
+                info!("Commented with id: {}", comment_id);
+                add_tasks(client, &rest_api_base_url, comment_id, tasks)
+            })
         })
-    });
+        .and_then(|_| Ok("Success"));
 
-    Box::new(response)
+    Box::new(future)
+}
+
+fn load_config_file(
+    client: &Client,
+    repo_base_url: &str,
+) -> Box<dyn Future<Item = WorkflowConfig, Error = Error>> {
+    let config_file_url = format!("{}raw/{}", repo_base_url, "workflow-tasks.toml");
+
+    let future = client
+        .get(config_file_url)
+        .send()
+        .from_err()
+        .and_then(|response| {
+            if response.status() == StatusCode::OK {
+                Ok(response)
+            } else {
+                error!("Config file response: {:?}", response);
+                Err(ErrorInternalServerError(format!(
+                    "Unexpected status code for config file: {}",
+                    response.status()
+                )))
+            }
+        })
+        .and_then(|mut response| {
+            response.body().map_err(|e| {
+                ErrorInternalServerError(format!("Error converting response to JSON: {}", e))
+            })
+        })
+        .and_then(|body: Bytes| {
+            let config: WorkflowConfig = match toml::from_slice(&body) {
+                Err(e) => {
+                    // TODO toml reading error should be reported in comment (to every PR)
+                    error!("Error reading TOML: {:?}", e);
+                    return Err(ErrorInternalServerError(format!(
+                        "Error reading TOML: {}",
+                        e
+                    )));
+                }
+                Ok(config) => config,
+            };
+            return Ok(config);
+        });
+
+    Box::new(future)
 }
 
 fn comment_pull_request(
@@ -141,6 +183,27 @@ fn comment_pull_request(
             })
         });
     Box::new(future)
+}
+
+fn add_tasks(
+    client: Rc<Client>,
+    rest_api_base_url: &str,
+    comment_id: i64,
+    tasks: Vec<String>,
+) -> Box<dyn Future<Item = &'static str, Error = Error>> {
+    let task_url = Rc::new(format!("{}tasks", rest_api_base_url));
+
+    let init_future: Box<dyn Future<Item = &'static str, Error = Error>> =
+        Box::new(future::ok("init"));
+
+    tasks.iter().fold(init_future, move |future, task| {
+        Box::new(future.and_then({
+            let client = Rc::clone(&client);
+            let task_url = Rc::clone(&task_url);
+            let task: String = task.clone();
+            move |_| add_task_to_comment(&client, &task_url, comment_id, task)
+        }))
+    })
 }
 
 fn add_task_to_comment(
