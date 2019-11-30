@@ -1,8 +1,6 @@
 // Author: Hermann Czedik-Eysenberg
 
-use actix_web::client::Client;
 use actix_web::error::ErrorInternalServerError;
-use actix_web::http::StatusCode;
 use actix_web::middleware::Logger;
 use actix_web::{web, App, Error, HttpServer, Responder};
 use bytes::Bytes;
@@ -23,6 +21,7 @@ use config::*;
 
 mod bitbucket;
 use bitbucket::types::*;
+use bitbucket::*;
 
 lazy_static! {
     static ref URL_HOST_REGEX: Regex = Regex::new(r"^(https?://[^/]+/)").unwrap();
@@ -86,21 +85,12 @@ fn handle_pr_opened_event(
 ) -> Box<dyn Future<Item = &'static str, Error = Error>> {
     let pr = event.pull_request;
     let base_url = get_base_url(&pr.links.self_link[0].href).to_string();
-    let project_key = pr.to_ref.repository.project.key;
-    let repository_slug = pr.to_ref.repository.slug;
+    let repo = pr.to_ref.repository;
+    let pull_request_id = pr.id;
 
-    let rest_api_base_url = format!("{}rest/api/1.0/", base_url);
+    let bitbucket_client = Rc::new(BitbucketClient::new(bearer.to_string(), base_url));
 
-    let repo_base_url = format!(
-        "{}projects/{}/repos/{}/",
-        rest_api_base_url, project_key, repository_slug
-    );
-
-    let pr_comment_url = format!("{}pull-requests/{}/comments", repo_base_url, pr.id);
-
-    let client = Rc::new(Client::build().bearer_auth(bearer).finish());
-
-    let future = load_config_file(&client, &repo_base_url)
+    let future = load_config_file(&bitbucket_client, &repo)
         .and_then(move |config| {
             debug!("Config: {:?}", config);
 
@@ -112,11 +102,13 @@ fn handle_pr_opened_event(
                 "Task4".to_string(),
             ];
 
-            comment_pull_request(&client, &pr_comment_url).and_then(move |comment| {
-                let comment_id = comment.id;
-                info!("Commented with id: {}", comment_id);
-                add_tasks(client, &rest_api_base_url, comment_id, tasks)
-            })
+            bitbucket_client
+                .comment_pull_request(repo, pull_request_id, "Test comment".to_string())
+                .and_then(move |comment| {
+                    let comment_id = comment.id;
+                    info!("Commented with id: {}", comment_id);
+                    add_tasks(bitbucket_client, comment_id, tasks)
+                })
         })
         .and_then(|_| Ok("Success"));
 
@@ -124,31 +116,11 @@ fn handle_pr_opened_event(
 }
 
 fn load_config_file(
-    client: &Client,
-    repo_base_url: &str,
+    client: &BitbucketClient,
+    repo: &Repository,
 ) -> Box<dyn Future<Item = WorkflowConfig, Error = Error>> {
-    let config_file_url = format!("{}raw/{}", repo_base_url, "workflow-tasks.toml");
-
     let future = client
-        .get(config_file_url)
-        .send()
-        .from_err()
-        .and_then(|response| {
-            if response.status() == StatusCode::OK {
-                Ok(response)
-            } else {
-                error!("Config file response: {:?}", response);
-                Err(ErrorInternalServerError(format!(
-                    "Unexpected status code for config file: {}",
-                    response.status()
-                )))
-            }
-        })
-        .and_then(|mut response| {
-            response.body().map_err(|e| {
-                ErrorInternalServerError(format!("Error converting response to JSON: {}", e))
-            })
-        })
+        .get_raw_file(repo, "workflow-tasks.toml")
         .and_then(|body: Bytes| {
             toml::from_slice::<WorkflowConfig>(&body).map_err(|e| {
                 // TODO toml reading error should be reported in comment (to every PR)
@@ -160,84 +132,21 @@ fn load_config_file(
     Box::new(future)
 }
 
-fn comment_pull_request(
-    client: &Client,
-    pr_comment_url: &str,
-) -> Box<dyn Future<Item = PullRequestCommentResponse, Error = Error>> {
-    let future = client
-        .post(pr_comment_url)
-        .send_json(&Comment {
-            text: "Test comment".to_string(),
-        })
-        .from_err()
-        .and_then(|response| {
-            if response.status() == StatusCode::CREATED {
-                Ok(response)
-            } else {
-                error!("Task creation response: {:?}", response);
-                Err(ErrorInternalServerError(format!(
-                    "Unexpected status code for comment creation: {}",
-                    response.status()
-                )))
-            }
-        })
-        .and_then(|mut response| {
-            response.json::<PullRequestCommentResponse>().map_err(|e| {
-                ErrorInternalServerError(format!("Error converting response to JSON: {}", e))
-            })
-        });
-    Box::new(future)
-}
-
 fn add_tasks(
-    client: Rc<Client>,
-    rest_api_base_url: &str,
+    client: Rc<BitbucketClient>,
     comment_id: i64,
     tasks: Vec<String>,
 ) -> Box<dyn Future<Item = &'static str, Error = Error>> {
-    let task_url = Rc::new(format!("{}tasks", rest_api_base_url));
-
     let init_future: Box<dyn Future<Item = &'static str, Error = Error>> =
         Box::new(future::ok("init"));
 
     tasks.iter().fold(init_future, move |future, task| {
         Box::new(future.and_then({
             let client = Rc::clone(&client);
-            let task_url = Rc::clone(&task_url);
             let task: String = task.clone();
-            move |_| add_task_to_comment(&client, &task_url, comment_id, task)
+            move |_| client.add_task_to_comment(comment_id, task)
         }))
     })
-}
-
-fn add_task_to_comment(
-    client: &Client,
-    task_url: &str,
-    comment_id: i64,
-    task_text: String,
-) -> Box<dyn Future<Item = &'static str, Error = Error>> {
-    let future = client
-        .post(task_url)
-        .send_json(&Task {
-            anchor: Anchor {
-                id: comment_id,
-                anchor_type: "COMMENT".to_string(),
-            },
-            text: task_text,
-        })
-        .from_err()
-        .and_then(|response| {
-            if response.status() == StatusCode::CREATED {
-                Ok("Task created")
-            } else {
-                error!("Task creation response: {:?}", response);
-                Err(ErrorInternalServerError(format!(
-                    "Unexpected status code for task creation: {}",
-                    response.status()
-                )))
-            }
-        });
-    Box::new(future)
 }
 
 fn get_base_url(url: &str) -> &str {
