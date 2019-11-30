@@ -150,18 +150,11 @@ fn load_config_file(
             })
         })
         .and_then(|body: Bytes| {
-            let config: WorkflowConfig = match toml::from_slice(&body) {
-                Err(e) => {
-                    // TODO toml reading error should be reported in comment (to every PR)
-                    error!("Error reading TOML: {:?}", e);
-                    return Err(ErrorInternalServerError(format!(
-                        "Error reading TOML: {}",
-                        e
-                    )));
-                }
-                Ok(config) => config,
-            };
-            return Ok(config);
+            toml::from_slice::<WorkflowConfig>(&body).map_err(|e| {
+                // TODO toml reading error should be reported in comment (to every PR)
+                error!("Error reading TOML: {:?}", e);
+                ErrorInternalServerError(format!("Error reading TOML: {}", e))
+            })
         });
 
     Box::new(future)
