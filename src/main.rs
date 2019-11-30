@@ -1,3 +1,5 @@
+// Author: Hermann Czedik-Eysenberg
+
 use actix_web::client::Client;
 use actix_web::error::ErrorInternalServerError;
 use actix_web::http::StatusCode;
@@ -10,16 +12,25 @@ use futures::future::Future;
 use lazy_static::lazy_static;
 use log::{debug, error, info};
 use regex::Regex;
+use serde::Deserialize;
 use serde_json::Value;
 use std::env;
 use std::rc::Rc;
 use toml;
 
-mod types;
-use types::*;
+mod config;
+use config::*;
+
+mod bitbucket;
+use bitbucket::types::*;
 
 lazy_static! {
     static ref URL_HOST_REGEX: Regex = Regex::new(r"^(https?://[^/]+/)").unwrap();
+}
+
+#[derive(Deserialize)]
+pub struct QueryParams {
+    pub bearer: String,
 }
 
 fn main() {
