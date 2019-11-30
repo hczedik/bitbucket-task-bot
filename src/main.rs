@@ -11,6 +11,7 @@ use log::{error, info};
 use regex::Regex;
 use serde_json::Value;
 use std::env;
+use std::rc::Rc;
 
 mod types;
 use types::*;
@@ -83,15 +84,31 @@ fn handle_pr_opened_event(
     );
     let pr_comment_url = format!("{}pull-requests/{}/comments", repo_base_url, pr.id);
 
-    let client = Client::build().bearer_auth(bearer).finish();
+    let tasks = vec![
+        "Task1".to_string(),
+        "Task2".to_string(),
+        "Task3".to_string(),
+        "Task4".to_string(),
+    ];
+
+    let client = Rc::new(Client::build().bearer_auth(bearer).finish());
     let response = comment_pull_request(&client, &pr_comment_url).and_then(move |comment| {
-        info!("Commented with id: {}", comment.id);
+        let comment_id = comment.id;
+        info!("Commented with id: {}", comment_id);
 
-        let task_url = format!("{}tasks", rest_api_base_url);
+        let task_url = Rc::new(format!("{}tasks", rest_api_base_url));
 
-        add_task_to_comment(&client, &task_url, comment.id, "Test task".to_string()).and_then(
-            move |_| add_task_to_comment(&client, &task_url, comment.id, "Test task 2".to_string()),
-        )
+        let init_future: Box<dyn Future<Item = &'static str, Error = Error>> =
+            Box::new(future::ok("init"));
+
+        tasks.iter().fold(init_future, move |future, task| {
+            Box::new(future.and_then({
+                let client = Rc::clone(&client);
+                let task_url = Rc::clone(&task_url);
+                let task: String = task.clone();
+                move |_| add_task_to_comment(&client, &task_url, comment_id, task)
+            }))
+        })
     });
 
     Box::new(response)
