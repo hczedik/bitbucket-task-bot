@@ -7,6 +7,7 @@ use bytes::Bytes;
 use env_logger::Env;
 use futures::future;
 use futures::future::Future;
+use globset::Glob;
 use lazy_static::lazy_static;
 use log::{debug, error, info};
 use regex::Regex;
@@ -130,9 +131,19 @@ fn select_workflow<'w>(
         workflow
             .merge
             .iter()
-            // TODO need to support wildcard matching here
-            .any(|merge| merge.from == from_branch && merge.to == to_branch)
+            .any(|merge| merge_matches(merge, from_branch, to_branch))
     })
+}
+
+fn merge_matches(merge: &Merge, from_branch: &str, to_branch: &str) -> bool {
+    wildcard_matches(&merge.from, from_branch) && wildcard_matches(&merge.to, to_branch)
+}
+
+fn wildcard_matches(wildcard: &str, s: &str) -> bool {
+    Glob::new(wildcard)
+        .map(|g| g.compile_matcher())
+        .map(|m| m.is_match(s))
+        .unwrap_or(false)
 }
 
 fn handle_workflow(
