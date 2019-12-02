@@ -80,6 +80,22 @@ Build within a Docker container and package in Docker image:
 
     docker build -t bitbucket-task-bot .
 
+To run the Docker image (forwarding the internal port 8088 to the external port 8088):
+
+    docker run -p 8088:8080 bitbucket-task-bot
+
+To run the Docker image (in the background) and do automatic restarts (e.g. when the machine gets rebooted or the application crashes):
+
+    docker run -d --restart always --name bitbucket-task-bot -p 8088:8088 bitbucket-task-bot
+
+To restart the Docker container after building a new version of the image:
+
+	docker stop bitbucket-task-bot && docker rm bitbucket-task-bot && docker run -d --restart always --name bitbucket-task-bot -p 8088:8088 bitbucket-task-bot
+
+To check the logs of the running Docker container:
+
+    docker logs bitbucket-task-bot
+
 
 Author
 ------
