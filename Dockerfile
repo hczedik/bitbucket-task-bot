@@ -22,10 +22,12 @@ RUN cargo build --release --target x86_64-unknown-linux-musl
 
 # Copy the source and build the application.
 COPY src ./src
-RUN cargo install --target x86_64-unknown-linux-musl --path .
+# necessary so that it actually re-builds
+RUN touch src/main.rs
+RUN cargo build --release --target x86_64-unknown-linux-musl
 
 # Copy the statically-linked binary into a scratch container.
 FROM scratch
-COPY --from=build /usr/local/cargo/bin/bitbucket-task-bot .
+COPY --from=build /usr/src/bitbucket-task-bot/target/x86_64-unknown-linux-musl/release/bitbucket-task-bot .
 USER 1000
-CMD ["bitbucket-task-bot"]
+CMD ["./bitbucket-task-bot"]
