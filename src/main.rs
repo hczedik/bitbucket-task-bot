@@ -99,7 +99,7 @@ fn handle_pr_opened_event(
     let from_branch = pr.from_ref.id.trim_start_matches("refs/heads/").to_string();
     let to_branch = pr.to_ref.id.trim_start_matches("refs/heads/").to_string();
 
-    let client = Rc::new(BitbucketClient::new(bearer.to_string(), base_url));
+    let client = Rc::new(BitbucketClient::new(base_url, bearer.to_string()));
 
     let future = load_config_file(&client, &repo).and_then(move |config| {
         debug!("Config: {:?}", config);

@@ -10,6 +10,7 @@ use actix_web::Error;
 use bytes::Bytes;
 use futures::future::Future;
 use log::error;
+use std::time::Duration;
 
 pub struct BitbucketClient {
     http_client: Client,
@@ -17,9 +18,12 @@ pub struct BitbucketClient {
 }
 
 impl BitbucketClient {
-    pub fn new(bearer: String, base_url: String) -> BitbucketClient {
+    pub fn new(base_url: String, bearer: String) -> BitbucketClient {
         BitbucketClient {
-            http_client: Client::build().bearer_auth(bearer).finish(),
+            http_client: Client::build()
+                .bearer_auth(bearer)
+                .timeout(Duration::from_secs(30))
+                .finish(),
             rest_api_base_url: format!("{}rest/api/1.0/", base_url),
         }
     }
