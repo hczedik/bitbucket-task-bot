@@ -12,7 +12,7 @@ RUN rustup target add x86_64-unknown-linux-musl
 # Create a dummy project and build the app's dependencies.
 # If the Cargo.toml or Cargo.lock files have not changed,
 # we can use the docker build cache and skip these (typically slow) steps.
-RUN cargo new bitbucket-task-bot
+RUN USER=root cargo new bitbucket-task-bot
 WORKDIR /usr/src/bitbucket-task-bot
 COPY Cargo.toml Cargo.lock ./
 RUN cargo build --release --target x86_64-unknown-linux-musl

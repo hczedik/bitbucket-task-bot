@@ -72,6 +72,14 @@ To perform linting (see https://github.com/rust-lang/rust-clippy):
 
     cargo clippy
 
+To perform formatting of all source files:
+
+    cargo fmt
+
+Build within a Docker container and package in Docker image:
+
+    docker build -t bitbucket-task-bot .
+
 
 Author
 ------
