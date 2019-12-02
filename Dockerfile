@@ -6,6 +6,9 @@
 FROM rust:1.39 AS build
 WORKDIR /usr/src
 
+# musl-gcc is needed by some dependencies
+RUN apt-get update && apt-get install -y musl-tools
+
 # Download the target for static linking.
 RUN rustup target add x86_64-unknown-linux-musl
 
