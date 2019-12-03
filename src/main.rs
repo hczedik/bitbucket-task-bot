@@ -14,7 +14,6 @@ use regex::Regex;
 use serde::Deserialize;
 use serde_json::Value;
 use std::env;
-use std::net::ToSocketAddrs;
 use std::rc::Rc;
 use toml;
 
