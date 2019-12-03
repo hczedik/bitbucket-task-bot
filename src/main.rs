@@ -37,7 +37,7 @@ fn main() {
     env::set_var("RUST_BACKTRACE", "1");
     env_logger::from_env(Env::default().default_filter_or("info,actix_web=debug")).init();
 
-    let port = "8088";
+    let port = "8084";
 
     HttpServer::new(|| {
         App::new()
