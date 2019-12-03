@@ -14,6 +14,7 @@ use regex::Regex;
 use serde::Deserialize;
 use serde_json::Value;
 use std::env;
+use std::net::ToSocketAddrs;
 use std::rc::Rc;
 use toml;
 
@@ -37,18 +38,28 @@ fn main() {
     env::set_var("RUST_BACKTRACE", "1");
     env_logger::from_env(Env::default().default_filter_or("info,actix_web=debug")).init();
 
-    HttpServer::new(|| {
+    let mut server = HttpServer::new(|| {
         App::new()
             .wrap(Logger::default())
             .route("/", web::get().to(index))
             .route("/hook", web::post().to(handle_bitbucket_event))
-    })
-    .bind("127.0.0.1:8088")
-    .unwrap()
-    .bind(":8088")
-    .unwrap()
-    .run()
-    .unwrap();
+    });
+
+    let port = "8088";
+
+    // bind to localhost
+    server = server.bind(format!("127.0.0.1:{}", port)).unwrap();
+    // bind to additional external host names
+    let addrs_result = format!(":{}", port).to_socket_addrs();
+    if let Ok(addrs) = addrs_result {
+        for addr in addrs {
+            server = server.bind(addr).unwrap();
+        }
+    } else {
+        // happens within Docker container
+        info!("Not binding to any external host names. Could not resolve any.")
+    }
+    server.run().unwrap();
 }
 
 fn index() -> impl Responder {
