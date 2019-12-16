@@ -101,25 +101,48 @@ fn handle_pr_opened_event(
 
     let client = Rc::new(BitbucketClient::new(base_url, bearer.to_string()));
 
-    let future = load_config_file(&client, &repo).and_then(move |config| {
-        debug!("Config: {:?}", config);
+    let future = load_config_file(&client, &repo).then(move |result| match result {
+        Err(e) => comment_error(
+            client,
+            &repo,
+            pull_request_id,
+            "Error reading workflow-tasks.toml configuration file from default branch",
+            e,
+        ),
+        Ok(config) => {
+            debug!("Config: {:?}", config);
 
-        match select_workflow(&config, &from_branch, &to_branch) {
-            None => {
-                info!("No workflow for merge {} -> {}", from_branch, to_branch);
-                Box::new(future::ok("No workflow"))
-            }
-            Some(workflow) => {
-                info!(
-                    "Triggering workflow for merge {} -> {}",
-                    from_branch, to_branch
-                );
-                handle_workflow(client, &repo, pull_request_id, workflow)
+            match select_workflow(&config, &from_branch, &to_branch) {
+                None => {
+                    info!("No workflow for merge {} -> {}", from_branch, to_branch);
+                    Box::new(future::ok("No workflow"))
+                }
+                Some(workflow) => {
+                    info!(
+                        "Triggering workflow for merge {} -> {}",
+                        from_branch, to_branch
+                    );
+                    handle_workflow(client, &repo, pull_request_id, workflow)
+                }
             }
         }
     });
 
     Box::new(future)
+}
+
+fn comment_error(
+    client: Rc<BitbucketClient>,
+    repo: &Repository,
+    pull_request_id: i64,
+    msg: &str,
+    e: Error,
+) -> Box<dyn Future<Item = &'static str, Error = Error>> {
+    Box::new(
+        client
+            .comment_pull_request(&repo, pull_request_id, format!("{}: {}", msg, e))
+            .and_then(|_| Err(e)),
+    )
 }
 
 fn select_workflow<'w>(
@@ -173,7 +196,6 @@ fn load_config_file(
         .get_raw_file(repo, "workflow-tasks.toml")
         .and_then(|body: Bytes| {
             toml::from_slice::<WorkflowConfig>(&body).map_err(|e| {
-                // TODO toml reading error should be reported in comment (to every PR)
                 error!("Error reading TOML: {:?}", e);
                 ErrorInternalServerError(format!("Error reading TOML: {}", e))
             })
