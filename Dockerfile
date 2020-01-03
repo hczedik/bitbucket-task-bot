@@ -29,5 +29,6 @@ RUN cargo build --release --target x86_64-unknown-linux-musl
 # Copy the statically-linked binary into a scratch container.
 FROM scratch
 COPY --from=build /usr/src/bitbucket-task-bot/target/x86_64-unknown-linux-musl/release/bitbucket-task-bot .
+EXPOSE 8084
 USER 1000
 CMD ["./bitbucket-task-bot"]
