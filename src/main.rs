@@ -102,13 +102,17 @@ fn handle_pr_opened_event(
     let client = Rc::new(BitbucketClient::new(base_url, bearer.to_string()));
 
     let future = load_config_file(&client, &repo).then(move |result| match result {
-        Err(e) => comment_error(
-            client,
-            &repo,
-            pull_request_id,
-            "Error reading workflow-tasks.toml configuration file from default branch",
-            e,
-        ),
+        Err(e) => {
+            error!("Error loading config file: {:?}", e);
+
+            comment_error(
+                client,
+                &repo,
+                pull_request_id,
+                "Error reading workflow-tasks.toml configuration file from default branch",
+                e,
+            )
+        }
         Ok(config) => {
             debug!("Config: {:?}", config);
 

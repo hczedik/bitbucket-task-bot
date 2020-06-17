@@ -4,6 +4,7 @@ pub mod types;
 use types::*;
 
 use actix_web::client::Client;
+use actix_web::client::Connector;
 use actix_web::error::ErrorInternalServerError;
 use actix_web::http::StatusCode;
 use actix_web::Error;
@@ -21,8 +22,9 @@ impl BitbucketClient {
     pub fn new(base_url: String, bearer: String) -> BitbucketClient {
         BitbucketClient {
             http_client: Client::build()
+                .connector(Connector::new().timeout(Duration::from_secs(120)).finish())
                 .bearer_auth(bearer)
-                .timeout(Duration::from_secs(30))
+                .timeout(Duration::from_secs(120))
                 .finish(),
             rest_api_base_url: format!("{}rest/api/1.0/", base_url),
         }
@@ -56,7 +58,7 @@ impl BitbucketClient {
                 if response.status() == StatusCode::CREATED {
                     Ok(response)
                 } else {
-                    error!("Task creation response: {:?}", response);
+                    error!("Comment creation response: {:?}", response);
                     Err(ErrorInternalServerError(format!(
                         "Unexpected status code for comment creation: {}",
                         response.status()
