@@ -3,7 +3,7 @@
 # re-downloading dependencies if they have not changed.
 # (inspired by https://alexbrand.dev/post/how-to-package-rust-applications-into-minimal-docker-containers/ )
 
-FROM rust:1.39 AS build
+FROM rust:1.47 AS build
 WORKDIR /usr/src
 
 # musl-gcc is needed by some dependencies
