@@ -106,19 +106,22 @@ impl BitbucketClient {
 
     pub fn add_task_to_comment(
         &self,
+        repo: &Repository,
+        pull_request_id: i64,
         comment_id: i64,
         task_text: String,
     ) -> Box<dyn Future<Item = &'static str, Error = Error>> {
-        let task_url = format!("{}tasks", self.rest_api_base_url);
+        let task_url = format!(
+            "{}pull-requests/{}/blocker-comments",
+            self.get_repo_base_url(&repo),
+            pull_request_id
+        );
 
         let future = self
             .http_client
             .post(task_url)
             .send_json(&Task {
-                anchor: Anchor {
-                    id: comment_id,
-                    anchor_type: "COMMENT".to_string(),
-                },
+                parent: Anchor { id: comment_id },
                 text: task_text,
             })
             .from_err()

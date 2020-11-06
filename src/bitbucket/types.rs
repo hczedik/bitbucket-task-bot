@@ -38,13 +38,13 @@ pub struct Ref {
     pub repository: Repository,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 pub struct Repository {
     pub slug: String,
     pub project: Project,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 pub struct Project {
     pub key: String,
 }
@@ -61,13 +61,11 @@ pub struct PullRequestCommentResponse {
 
 #[derive(Serialize)]
 pub struct Task {
-    pub anchor: Anchor,
+    pub parent: Anchor,
     pub text: String,
 }
 
 #[derive(Serialize)]
 pub struct Anchor {
     pub id: i64,
-    #[serde(rename = "type")]
-    pub anchor_type: String,
 }

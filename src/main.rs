@@ -15,7 +15,6 @@ use serde::Deserialize;
 use serde_json::Value;
 use std::env;
 use std::rc::Rc;
-use toml;
 
 mod config;
 use config::*;
@@ -180,12 +179,18 @@ fn handle_workflow(
     workflow: &Workflow,
 ) -> Box<dyn Future<Item = &'static str, Error = Error>> {
     let tasks = workflow.tasks.clone();
+
     let future = client
-        .comment_pull_request(repo, pull_request_id, workflow.comment.to_string())
-        .and_then(move |comment| {
-            let comment_id = comment.id;
-            info!("Commented with id: {}", comment_id);
-            add_tasks(client, comment_id, tasks)
+        .comment_pull_request(&repo, pull_request_id, workflow.comment.to_string())
+        .and_then({
+            let repo = repo.clone();
+
+            move |comment| {
+                let comment_id = comment.id;
+
+                info!("Commented with id: {}", comment_id);
+                add_tasks(client, &repo, pull_request_id, comment_id, tasks)
+            }
         })
         .and_then(|_| Ok("Success"));
 
@@ -210,6 +215,8 @@ fn load_config_file(
 
 fn add_tasks(
     client: Rc<BitbucketClient>,
+    repo: &Repository,
+    pull_request_id: i64,
     comment_id: i64,
     tasks: Vec<String>,
 ) -> Box<dyn Future<Item = &'static str, Error = Error>> {
@@ -220,7 +227,9 @@ fn add_tasks(
         Box::new(future.and_then({
             let client = Rc::clone(&client);
             let task: String = task.clone();
-            move |_| client.add_task_to_comment(comment_id, task)
+            let repo = repo.clone();
+
+            move |_| client.add_task_to_comment(&repo, pull_request_id, comment_id, task)
         }))
     })
 }
