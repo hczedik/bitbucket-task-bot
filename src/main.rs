@@ -34,7 +34,7 @@ pub struct QueryParams {
 
 fn main() {
     env::set_var("RUST_BACKTRACE", "1");
-    env_logger::from_env(Env::default().default_filter_or("info,actix_web=debug")).init();
+    env_logger::Builder::from_env(Env::default().default_filter_or("info,actix_web=debug")).init();
 
     let port = "8084";
 
