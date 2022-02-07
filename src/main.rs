@@ -96,7 +96,7 @@ fn handle_pr_opened_event(
     };
     let repo = pr.to_ref.repository;
     let pull_request_id = pr.id;
-    let from_branch = get_short_ref_name(&pr.from_ref.id);
+    let from_ref = get_short_ref_name(&pr.from_ref.id);
     let to_branch = get_short_ref_name(&pr.to_ref.id);
 
     let client = Rc::new(BitbucketClient::new(base_url, bearer.to_string()));
@@ -116,15 +116,15 @@ fn handle_pr_opened_event(
         Ok(config) => {
             debug!("Config: {:?}", config);
 
-            match select_workflow(&config, &from_branch, &to_branch) {
+            match select_workflow(&config, &from_ref, &to_branch) {
                 None => {
-                    info!("No workflow for merge {} -> {}", from_branch, to_branch);
+                    info!("No workflow for merge {} -> {}", from_ref, to_branch);
                     Box::new(future::ok("No workflow"))
                 }
                 Some(workflow) => {
                     info!(
                         "Triggering workflow for merge {} -> {}",
-                        from_branch, to_branch
+                        from_ref, to_branch
                     );
                     handle_workflow(client, &repo, pull_request_id, workflow)
                 }
@@ -151,19 +151,19 @@ fn comment_error(
 
 fn select_workflow<'w>(
     config: &'w WorkflowConfig,
-    from_branch: &str,
+    from_ref: &str,
     to_branch: &str,
 ) -> Option<&'w Workflow> {
     config.workflow.iter().find(|workflow| {
         workflow
             .merge
             .iter()
-            .any(|merge| merge_matches(merge, from_branch, to_branch))
+            .any(|merge| merge_matches(merge, from_ref, to_branch))
     })
 }
 
-fn merge_matches(merge: &Merge, from_branch: &str, to_branch: &str) -> bool {
-    wildcard_matches(&merge.from, from_branch) && wildcard_matches(&merge.to, to_branch)
+fn merge_matches(merge: &Merge, from_ref: &str, to_branch: &str) -> bool {
+    wildcard_matches(&merge.from, from_ref) && wildcard_matches(&merge.to, to_branch)
 }
 
 fn wildcard_matches(wildcard: &str, s: &str) -> bool {
