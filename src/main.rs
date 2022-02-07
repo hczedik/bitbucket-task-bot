@@ -25,6 +25,7 @@ use bitbucket::*;
 
 lazy_static! {
     static ref URL_HOST_REGEX: Regex = Regex::new(r"^(https?://[^/]+/)").unwrap();
+    static ref REFS_PREFIX_REGEX: Regex = Regex::new(r"^refs/(heads|tags)/").unwrap();
 }
 
 #[derive(Deserialize)]
@@ -95,8 +96,8 @@ fn handle_pr_opened_event(
     };
     let repo = pr.to_ref.repository;
     let pull_request_id = pr.id;
-    let from_branch = pr.from_ref.id.trim_start_matches("refs/heads/").to_string();
-    let to_branch = pr.to_ref.id.trim_start_matches("refs/heads/").to_string();
+    let from_branch = get_short_ref_name(&pr.from_ref.id);
+    let to_branch = get_short_ref_name(&pr.to_ref.id);
 
     let client = Rc::new(BitbucketClient::new(base_url, bearer.to_string()));
 
@@ -239,4 +240,8 @@ fn get_base_url(url: &str) -> Option<&str> {
         .captures(url)
         .and_then(|c| c.get(1))
         .map(|u| u.as_str())
+}
+
+fn get_short_ref_name(long_ref: &str) -> String {
+    REFS_PREFIX_REGEX.replace(long_ref, "").to_string()
 }
