@@ -1,7 +1,7 @@
 Bitbucket Task Bot
 ==================
 
-Bot which automatically adds tasks to Bitbucket Pull Requests.
+Bot which automatically adds tasks to Bitbucket Pull Requests. These tasks need to be checked off, before the PR can be merged.
 
 Usage
 -----
