@@ -2,20 +2,17 @@
 name = "bitbucket-task-bot"
 version = "0.1.0"
 authors = ["Hermann Czedik-Eysenberg <hermann.czedik-eysenberg@agfa.com>"]
-edition = "2018"
+edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 log = "0.4"
-env_logger = "0.8.1"
-actix-web = { version = "1.0", features = ["rust-tls"] }
-rustls = "0.15"
+env_logger = "0.11"
+actix-web = "4"
 serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0.41"
-lazy_static = "1.4.0"
-regex = "1.3.1"
-futures = "0.1"
-globset = "0.4.4"
-toml = "0.5.5"
-bytes = "0.4.12"
+serde_json = "1.0"
+regex = "1"
+globset = "0.4"
+toml = "0.8"
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }

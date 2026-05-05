@@ -1,20 +1,14 @@
 // Author: Hermann Czedik-Eysenberg
 
-use actix_web::error::ErrorInternalServerError;
 use actix_web::middleware::Logger;
 use actix_web::{web, App, Error, HttpServer, Responder};
-use bytes::Bytes;
 use env_logger::Env;
-use futures::future;
-use futures::future::Future;
 use globset::Glob;
-use lazy_static::lazy_static;
 use log::{debug, error, info};
 use regex::Regex;
 use serde::Deserialize;
 use serde_json::Value;
-use std::env;
-use std::rc::Rc;
+use std::sync::LazyLock;
 
 mod config;
 use config::*;
@@ -23,18 +17,18 @@ mod bitbucket;
 use bitbucket::types::*;
 use bitbucket::*;
 
-lazy_static! {
-    static ref URL_HOST_REGEX: Regex = Regex::new(r"^(https?://[^/]+/)").unwrap();
-    static ref REFS_PREFIX_REGEX: Regex = Regex::new(r"^refs/(heads|tags)/").unwrap();
-}
+static URL_HOST_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^(https?://[^/]+/)").unwrap());
+static REFS_PREFIX_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^refs/(heads|tags)/").unwrap());
 
 #[derive(Deserialize)]
 pub struct QueryParams {
     pub bearer: String,
 }
 
-fn main() {
-    env::set_var("RUST_BACKTRACE", "1");
+#[actix_web::main]
+async fn main() {
     env_logger::Builder::from_env(Env::default().default_filter_or("info,actix_web=debug")).init();
 
     let port = "8084";
@@ -48,105 +42,118 @@ fn main() {
     .bind(format!("0.0.0.0:{}", port))
     .unwrap()
     .run()
+    .await
     .unwrap();
 }
 
-fn index() -> impl Responder {
+async fn index() -> impl Responder {
     "Hi, I'm the Bitbucket Task Bot!"
 }
 
-fn handle_bitbucket_event(
+async fn handle_bitbucket_event(
     query: web::Query<QueryParams>,
     payload: String,
-) -> Box<dyn Future<Item = &'static str, Error = Error>> {
+) -> Result<&'static str, Error> {
     info!("Received event: {}", payload);
 
-    let json: Value = match serde_json::from_str(&payload) {
-        Err(e) => return Box::new(future::err(e.into())),
-        Ok(json) => json,
-    };
+    let json: Value = serde_json::from_str(&payload)?;
 
     if json["test"].as_bool() == Some(true) {
-        // Bitbucket connection test
-        Box::new(future::ok("Success"))
+        Ok("Success")
     } else if json["eventKey"].as_str() == Some("pr:opened") {
-        let event: PullRequestOpenedEvent = match serde_json::from_value(json) {
-            Err(e) => return Box::new(future::err(e.into())),
-            Ok(event) => event,
-        };
-        handle_pr_opened_event(event, &query.bearer)
+        let event: PullRequestOpenedEvent = serde_json::from_value(json)?;
+        handle_pr_opened_event(event, &query.bearer).await
     } else {
-        Box::new(future::ok("Ignoring unexpected payload"))
+        Ok("Ignoring unexpected payload")
     }
 }
 
-fn handle_pr_opened_event(
+async fn handle_pr_opened_event(
     event: PullRequestOpenedEvent,
     bearer: &str,
-) -> Box<dyn Future<Item = &'static str, Error = Error>> {
+) -> Result<&'static str, Error> {
     let pr = event.pull_request;
-    let base_url = match get_base_url(&pr.links.self_link[0].href) {
-        None => {
-            return Box::new(future::err(ErrorInternalServerError(format!(
+    let base_url = get_base_url(&pr.links.self_link[0].href)
+        .ok_or_else(|| {
+            actix_web::error::ErrorInternalServerError(format!(
                 "Error reading URL: {}",
                 &pr.links.self_link[0].href
-            ))))
-        }
-        Some(base_url) => base_url.to_string(),
-    };
+            ))
+        })?
+        .to_string();
     let repo = pr.to_ref.repository;
     let pull_request_id = pr.id;
     let from_ref = get_short_ref_name(&pr.from_ref.id);
     let to_branch = get_short_ref_name(&pr.to_ref.id);
 
-    let client = Rc::new(BitbucketClient::new(base_url, bearer.to_string()));
+    let client = BitbucketClient::new(base_url, bearer.to_string());
 
-    let future = load_config_file(&client, &repo).then(move |result| match result {
+    let config = match load_config_file(&client, &repo).await {
         Err(e) => {
             error!("Error loading config file: {:?}", e);
-
-            comment_error(
-                client,
-                &repo,
-                pull_request_id,
-                "Error reading workflow-tasks.toml configuration file from default branch",
-                e,
-            )
+            client
+                .comment_pull_request(
+                    &repo,
+                    pull_request_id,
+                    format!(
+                        "Error reading workflow-tasks.toml configuration file from default branch: {}",
+                        e
+                    ),
+                )
+                .await?;
+            return Err(e);
         }
-        Ok(config) => {
-            debug!("Config: {:?}", config);
+        Ok(config) => config,
+    };
 
-            match select_workflow(&config, &from_ref, &to_branch) {
-                None => {
-                    info!("No workflow for merge {} -> {}", from_ref, to_branch);
-                    Box::new(future::ok("No workflow"))
-                }
-                Some(workflow) => {
-                    info!(
-                        "Triggering workflow for merge {} -> {}",
-                        from_ref, to_branch
-                    );
-                    handle_workflow(client, &repo, pull_request_id, workflow)
-                }
-            }
+    debug!("Config: {:?}", config);
+
+    match select_workflow(&config, &from_ref, &to_branch) {
+        None => {
+            info!("No workflow for merge {} -> {}", from_ref, to_branch);
+            Ok("No workflow")
         }
-    });
-
-    Box::new(future)
+        Some(workflow) => {
+            info!(
+                "Triggering workflow for merge {} -> {}",
+                from_ref, to_branch
+            );
+            handle_workflow(&client, &repo, pull_request_id, workflow).await
+        }
+    }
 }
 
-fn comment_error(
-    client: Rc<BitbucketClient>,
+async fn handle_workflow(
+    client: &BitbucketClient,
     repo: &Repository,
     pull_request_id: i64,
-    msg: &str,
-    e: Error,
-) -> Box<dyn Future<Item = &'static str, Error = Error>> {
-    Box::new(
+    workflow: &Workflow,
+) -> Result<&'static str, Error> {
+    let comment = client
+        .comment_pull_request(repo, pull_request_id, workflow.comment.clone())
+        .await?;
+
+    let comment_id = comment.id;
+    info!("Commented with id: {}", comment_id);
+
+    for task in &workflow.tasks {
         client
-            .comment_pull_request(&repo, pull_request_id, format!("{}: {}", msg, e))
-            .and_then(|_| Err(e)),
-    )
+            .add_task_to_comment(repo, pull_request_id, comment_id, task.clone())
+            .await?;
+    }
+
+    Ok("Success")
+}
+
+async fn load_config_file(
+    client: &BitbucketClient,
+    repo: &Repository,
+) -> Result<WorkflowConfig, Error> {
+    let body = client.get_raw_file(repo, "workflow-tasks.toml").await?;
+    toml::from_str::<WorkflowConfig>(&body).map_err(|e| {
+        error!("Error reading TOML: {:?}", e);
+        actix_web::error::ErrorInternalServerError(format!("Error reading TOML: {}", e))
+    })
 }
 
 fn select_workflow<'w>(
@@ -173,68 +180,6 @@ fn wildcard_matches(wildcard: &str, s: &str) -> bool {
         .unwrap_or(false)
 }
 
-fn handle_workflow(
-    client: Rc<BitbucketClient>,
-    repo: &Repository,
-    pull_request_id: i64,
-    workflow: &Workflow,
-) -> Box<dyn Future<Item = &'static str, Error = Error>> {
-    let tasks = workflow.tasks.clone();
-
-    let future = client
-        .comment_pull_request(&repo, pull_request_id, workflow.comment.to_string())
-        .and_then({
-            let repo = repo.clone();
-
-            move |comment| {
-                let comment_id = comment.id;
-
-                info!("Commented with id: {}", comment_id);
-                add_tasks(client, &repo, pull_request_id, comment_id, tasks)
-            }
-        })
-        .and_then(|_| Ok("Success"));
-
-    Box::new(future)
-}
-
-fn load_config_file(
-    client: &BitbucketClient,
-    repo: &Repository,
-) -> Box<dyn Future<Item = WorkflowConfig, Error = Error>> {
-    let future = client
-        .get_raw_file(repo, "workflow-tasks.toml")
-        .and_then(|body: Bytes| {
-            toml::from_slice::<WorkflowConfig>(&body).map_err(|e| {
-                error!("Error reading TOML: {:?}", e);
-                ErrorInternalServerError(format!("Error reading TOML: {}", e))
-            })
-        });
-
-    Box::new(future)
-}
-
-fn add_tasks(
-    client: Rc<BitbucketClient>,
-    repo: &Repository,
-    pull_request_id: i64,
-    comment_id: i64,
-    tasks: Vec<String>,
-) -> Box<dyn Future<Item = &'static str, Error = Error>> {
-    let init_future: Box<dyn Future<Item = &'static str, Error = Error>> =
-        Box::new(future::ok("init"));
-
-    tasks.iter().fold(init_future, move |future, task| {
-        Box::new(future.and_then({
-            let client = Rc::clone(&client);
-            let task: String = task.clone();
-            let repo = repo.clone();
-
-            move |_| client.add_task_to_comment(&repo, pull_request_id, comment_id, task)
-        }))
-    })
-}
-
 fn get_base_url(url: &str) -> Option<&str> {
     URL_HOST_REGEX
         .captures(url)
@@ -245,3 +190,4 @@ fn get_base_url(url: &str) -> Option<&str> {
 fn get_short_ref_name(long_ref: &str) -> String {
     REFS_PREFIX_REGEX.replace(long_ref, "").to_string()
 }
+
