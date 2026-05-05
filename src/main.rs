@@ -1,7 +1,7 @@
 // Author: Hermann Czedik-Eysenberg
 
 use actix_web::middleware::Logger;
-use actix_web::{web, App, Error, HttpServer, Responder};
+use actix_web::{App, Error, HttpServer, Responder, web};
 use env_logger::Env;
 use globset::Glob;
 use log::{debug, error, info};
@@ -12,8 +12,8 @@ mod config;
 use config::{Merge, Workflow, WorkflowConfig};
 
 mod bitbucket;
-use bitbucket::types::{PullRequestOpenedEvent, Repository};
 use bitbucket::BitbucketClient;
+use bitbucket::types::{PullRequestOpenedEvent, Repository};
 
 #[derive(Deserialize)]
 struct QueryParams {
@@ -77,9 +77,7 @@ async fn handle_pr_opened_event(
         .as_str();
     let base_url = get_base_url(base_url)
         .ok_or_else(|| {
-            actix_web::error::ErrorInternalServerError(format!(
-                "Error reading URL: {base_url}"
-            ))
+            actix_web::error::ErrorInternalServerError(format!("Error reading URL: {base_url}"))
         })?
         .to_string();
     let repo = pr.to_ref.repository;

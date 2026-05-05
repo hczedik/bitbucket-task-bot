@@ -3,8 +3,8 @@
 pub mod types;
 use types::{Anchor, Comment, PullRequestCommentResponse, Repository, Task};
 
-use actix_web::error::ErrorInternalServerError;
 use actix_web::Error;
+use actix_web::error::ErrorInternalServerError;
 use log::error;
 use reqwest::{Client, StatusCode};
 use std::time::Duration;
