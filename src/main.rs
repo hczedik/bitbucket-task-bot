@@ -24,13 +24,15 @@ struct QueryParams {
 async fn main() {
     env_logger::Builder::from_env(Env::default().default_filter_or("info,actix_web=debug")).init();
 
+    let port = "8084";
+
     HttpServer::new(|| {
         App::new()
             .wrap(Logger::default())
             .route("/", web::get().to(index))
             .route("/hook", web::post().to(handle_bitbucket_event))
     })
-    .bind("0.0.0.0:8084")
+    .bind(format!("0.0.0.0:{port}"))
     .unwrap()
     .run()
     .await
