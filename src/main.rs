@@ -1,14 +1,12 @@
 // Author: Hermann Czedik-Eysenberg
 
 use actix_web::middleware::Logger;
-use actix_web::{App, Error, HttpServer, Responder, web};
+use actix_web::{web, App, Error, HttpServer, Responder};
 use env_logger::Env;
 use globset::Glob;
 use log::{debug, error, info};
-use regex::Regex;
 use serde::Deserialize;
 use serde_json::Value;
-use std::sync::LazyLock;
 
 mod config;
 use config::*;
@@ -17,21 +15,14 @@ mod bitbucket;
 use bitbucket::types::*;
 use bitbucket::*;
 
-static URL_HOST_REGEX: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^(https?://[^/]+/)").unwrap());
-static REFS_PREFIX_REGEX: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^refs/(heads|tags)/").unwrap());
-
 #[derive(Deserialize)]
-pub struct QueryParams {
-    pub bearer: String,
+struct QueryParams {
+    bearer: String,
 }
 
 #[actix_web::main]
 async fn main() {
     env_logger::Builder::from_env(Env::default().default_filter_or("info,actix_web=debug")).init();
-
-    let port = "8084";
 
     HttpServer::new(|| {
         App::new()
@@ -39,7 +30,7 @@ async fn main() {
             .route("/", web::get().to(index))
             .route("/hook", web::post().to(handle_bitbucket_event))
     })
-    .bind(format!("0.0.0.0:{}", port))
+    .bind("0.0.0.0:8084")
     .unwrap()
     .run()
     .await
@@ -96,8 +87,7 @@ async fn handle_pr_opened_event(
                     &repo,
                     pull_request_id,
                     format!(
-                        "Error reading workflow-tasks.toml configuration file from default branch: {}",
-                        e
+                        "Error reading workflow-tasks.toml configuration file from default branch: {e}"
                     ),
                 )
                 .await?;
@@ -110,14 +100,11 @@ async fn handle_pr_opened_event(
 
     match select_workflow(&config, &from_ref, &to_branch) {
         None => {
-            info!("No workflow for merge {} -> {}", from_ref, to_branch);
+            info!("No workflow for merge {from_ref} -> {to_branch}");
             Ok("No workflow")
         }
         Some(workflow) => {
-            info!(
-                "Triggering workflow for merge {} -> {}",
-                from_ref, to_branch
-            );
+            info!("Triggering workflow for merge {from_ref} -> {to_branch}");
             handle_workflow(&client, &repo, pull_request_id, workflow).await
         }
     }
@@ -134,11 +121,11 @@ async fn handle_workflow(
         .await?;
 
     let comment_id = comment.id;
-    info!("Commented with id: {}", comment_id);
+    info!("Commented with id: {comment_id}");
 
     for task in &workflow.tasks {
         client
-            .add_task_to_comment(repo, pull_request_id, comment_id, task.clone())
+            .add_task_to_comment(repo, pull_request_id, comment_id, task)
             .await?;
     }
 
@@ -152,7 +139,7 @@ async fn load_config_file(
     let body = client.get_raw_file(repo, "workflow-tasks.toml").await?;
     toml::from_str::<WorkflowConfig>(&body).map_err(|e| {
         error!("Error reading TOML: {:?}", e);
-        actix_web::error::ErrorInternalServerError(format!("Error reading TOML: {}", e))
+        actix_web::error::ErrorInternalServerError(format!("Error reading TOML: {e}"))
     })
 }
 
@@ -174,19 +161,20 @@ fn merge_matches(merge: &Merge, from_ref: &str, to_branch: &str) -> bool {
 }
 
 fn wildcard_matches(wildcard: &str, s: &str) -> bool {
-    Glob::new(wildcard)
-        .map(|g| g.compile_matcher())
-        .map(|m| m.is_match(s))
-        .unwrap_or(false)
+    Glob::new(wildcard).is_ok_and(|g| g.compile_matcher().is_match(s))
 }
 
 fn get_base_url(url: &str) -> Option<&str> {
-    URL_HOST_REGEX
-        .captures(url)
-        .and_then(|c| c.get(1))
-        .map(|u| u.as_str())
+    let after_scheme = url.find("://")? + 3;
+    let path_start = after_scheme + url[after_scheme..].find('/')?;
+    Some(&url[..path_start + 1])
 }
 
 fn get_short_ref_name(long_ref: &str) -> String {
-    REFS_PREFIX_REGEX.replace(long_ref, "").to_string()
+    long_ref
+        .strip_prefix("refs/heads/")
+        .or_else(|| long_ref.strip_prefix("refs/tags/"))
+        .unwrap_or(long_ref)
+        .to_string()
 }
+

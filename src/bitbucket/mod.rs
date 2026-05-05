@@ -66,9 +66,7 @@ impl BitbucketClient {
         response
             .json::<PullRequestCommentResponse>()
             .await
-            .map_err(|e| {
-                ErrorInternalServerError(format!("Error converting response to JSON: {}", e))
-            })
+            .map_err(|e| ErrorInternalServerError(format!("Error converting response to JSON: {e}")))
     }
 
     pub async fn get_raw_file(&self, repo: &Repository, file_path: &str) -> Result<String, Error> {
@@ -93,7 +91,7 @@ impl BitbucketClient {
         response
             .text()
             .await
-            .map_err(|e| ErrorInternalServerError(format!("Error reading file: {} - {}", url, e)))
+            .map_err(|e| ErrorInternalServerError(format!("Error reading file: {url} - {e}")))
     }
 
     pub async fn add_task_to_comment(
@@ -101,7 +99,7 @@ impl BitbucketClient {
         repo: &Repository,
         pull_request_id: i64,
         comment_id: i64,
-        task_text: String,
+        task_text: &str,
     ) -> Result<(), Error> {
         let url = format!(
             "{}pull-requests/{}/blocker-comments",
@@ -115,7 +113,7 @@ impl BitbucketClient {
             .bearer_auth(&self.bearer)
             .json(&Task {
                 parent: Anchor { id: comment_id },
-                text: task_text,
+                text: task_text.to_string(),
             })
             .send()
             .await
