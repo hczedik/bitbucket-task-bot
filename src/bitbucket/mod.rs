@@ -3,8 +3,8 @@
 pub mod types;
 use types::*;
 
-use actix_web::error::ErrorInternalServerError;
 use actix_web::Error;
+use actix_web::error::ErrorInternalServerError;
 use log::error;
 use reqwest::{Client, StatusCode};
 use std::time::Duration;
@@ -71,11 +71,7 @@ impl BitbucketClient {
             })
     }
 
-    pub async fn get_raw_file(
-        &self,
-        repo: &Repository,
-        file_path: &str,
-    ) -> Result<String, Error> {
+    pub async fn get_raw_file(&self, repo: &Repository, file_path: &str) -> Result<String, Error> {
         let url = format!("{}raw/{}", self.get_repo_base_url(repo), file_path);
 
         let response = self
@@ -94,9 +90,10 @@ impl BitbucketClient {
             )));
         }
 
-        response.text().await.map_err(|e| {
-            ErrorInternalServerError(format!("Error reading file: {} - {}", url, e))
-        })
+        response
+            .text()
+            .await
+            .map_err(|e| ErrorInternalServerError(format!("Error reading file: {} - {}", url, e)))
     }
 
     pub async fn add_task_to_comment(
@@ -135,4 +132,3 @@ impl BitbucketClient {
         Ok(())
     }
 }
-

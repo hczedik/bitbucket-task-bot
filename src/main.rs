@@ -1,7 +1,7 @@
 // Author: Hermann Czedik-Eysenberg
 
 use actix_web::middleware::Logger;
-use actix_web::{web, App, Error, HttpServer, Responder};
+use actix_web::{App, Error, HttpServer, Responder, web};
 use env_logger::Env;
 use globset::Glob;
 use log::{debug, error, info};
@@ -190,4 +190,3 @@ fn get_base_url(url: &str) -> Option<&str> {
 fn get_short_ref_name(long_ref: &str) -> String {
     REFS_PREFIX_REGEX.replace(long_ref, "").to_string()
 }
-
