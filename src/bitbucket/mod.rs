@@ -66,7 +66,9 @@ impl BitbucketClient {
         response
             .json::<PullRequestCommentResponse>()
             .await
-            .map_err(|e| ErrorInternalServerError(format!("Error converting response to JSON: {e}")))
+            .map_err(|e| {
+                ErrorInternalServerError(format!("Error converting response to JSON: {e}"))
+            })
     }
 
     pub async fn get_raw_file(&self, repo: &Repository, file_path: &str) -> Result<String, Error> {
