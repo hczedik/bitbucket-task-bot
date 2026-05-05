@@ -1,7 +1,7 @@
 // Author: Hermann Czedik-Eysenberg
 
 use actix_web::middleware::Logger;
-use actix_web::{App, Error, HttpServer, Responder, web};
+use actix_web::{web, App, Error, HttpServer, Responder};
 use env_logger::Env;
 use globset::Glob;
 use log::{debug, error, info};
@@ -9,11 +9,11 @@ use serde::Deserialize;
 use serde_json::Value;
 
 mod config;
-use config::*;
+use config::{Merge, Workflow, WorkflowConfig};
 
 mod bitbucket;
-use bitbucket::types::*;
-use bitbucket::*;
+use bitbucket::types::{PullRequestOpenedEvent, Repository};
+use bitbucket::BitbucketClient;
 
 #[derive(Deserialize)]
 struct QueryParams {
@@ -66,11 +66,19 @@ async fn handle_pr_opened_event(
     bearer: &str,
 ) -> Result<&'static str, Error> {
     let pr = event.pull_request;
-    let base_url = get_base_url(&pr.links.self_link[0].href)
+    let base_url = pr
+        .links
+        .self_link
+        .first()
+        .ok_or_else(|| {
+            actix_web::error::ErrorInternalServerError("Missing self link in pull request")
+        })?
+        .href
+        .as_str();
+    let base_url = get_base_url(base_url)
         .ok_or_else(|| {
             actix_web::error::ErrorInternalServerError(format!(
-                "Error reading URL: {}",
-                &pr.links.self_link[0].href
+                "Error reading URL: {base_url}"
             ))
         })?
         .to_string();
@@ -88,7 +96,7 @@ async fn handle_pr_opened_event(
                 .comment_pull_request(
                     &repo,
                     pull_request_id,
-                    format!(
+                    &format!(
                         "Error reading workflow-tasks.toml configuration file from default branch: {e}"
                     ),
                 )
@@ -119,7 +127,7 @@ async fn handle_workflow(
     workflow: &Workflow,
 ) -> Result<&'static str, Error> {
     let comment = client
-        .comment_pull_request(repo, pull_request_id, workflow.comment.clone())
+        .comment_pull_request(repo, pull_request_id, &workflow.comment)
         .await?;
 
     let comment_id = comment.id;

@@ -1,10 +1,10 @@
 // Author: Hermann Czedik-Eysenberg
 
 pub mod types;
-use types::*;
+use types::{Anchor, Comment, PullRequestCommentResponse, Repository, Task};
 
-use actix_web::Error;
 use actix_web::error::ErrorInternalServerError;
+use actix_web::Error;
 use log::error;
 use reqwest::{Client, StatusCode};
 use std::time::Duration;
@@ -23,34 +23,33 @@ impl BitbucketClient {
                 .build()
                 .expect("Failed to create HTTP client"),
             bearer,
-            rest_api_base_url: format!("{}rest/api/1.0/", base_url),
+            rest_api_base_url: format!("{base_url}rest/api/1.0/"),
         }
     }
 
     fn get_repo_base_url(&self, repo: &Repository) -> String {
-        format!(
-            "{}projects/{}/repos/{}/",
-            self.rest_api_base_url, repo.project.key, repo.slug
-        )
+        let base = &self.rest_api_base_url;
+        let project = &repo.project.key;
+        let slug = &repo.slug;
+        format!("{base}projects/{project}/repos/{slug}/")
     }
 
     pub async fn comment_pull_request(
         &self,
         repo: &Repository,
         pull_request_id: i64,
-        comment_text: String,
+        comment_text: &str,
     ) -> Result<PullRequestCommentResponse, Error> {
-        let url = format!(
-            "{}pull-requests/{}/comments",
-            self.get_repo_base_url(repo),
-            pull_request_id
-        );
+        let base = self.get_repo_base_url(repo);
+        let url = format!("{base}pull-requests/{pull_request_id}/comments");
 
         let response = self
             .http_client
             .post(&url)
             .bearer_auth(&self.bearer)
-            .json(&Comment { text: comment_text })
+            .json(&Comment {
+                text: comment_text.to_string(),
+            })
             .send()
             .await
             .map_err(|e| ErrorInternalServerError(e.to_string()))?;
@@ -72,7 +71,8 @@ impl BitbucketClient {
     }
 
     pub async fn get_raw_file(&self, repo: &Repository, file_path: &str) -> Result<String, Error> {
-        let url = format!("{}raw/{}", self.get_repo_base_url(repo), file_path);
+        let base = self.get_repo_base_url(repo);
+        let url = format!("{base}raw/{file_path}");
 
         let response = self
             .http_client
@@ -103,11 +103,8 @@ impl BitbucketClient {
         comment_id: i64,
         task_text: &str,
     ) -> Result<(), Error> {
-        let url = format!(
-            "{}pull-requests/{}/blocker-comments",
-            self.get_repo_base_url(repo),
-            pull_request_id
-        );
+        let base = self.get_repo_base_url(repo);
+        let url = format!("{base}pull-requests/{pull_request_id}/blocker-comments");
 
         let response = self
             .http_client
